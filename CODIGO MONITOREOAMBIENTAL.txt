@@ -1,0 +1,182 @@
+/*!
+
+\brief  Desarrollo de funciones para maquina de estados.
+
+/**
+ * @file main.c 
+\date   2024-05-03 
+\author Yurani Tuquerres <ytuquerres@unicauca.edu.co> 
+\author Kevin Iván Hoyos <hkevin@unicauca.edu.co>
+\author Martín Gonzales <josegonzalez@unicauca.edu.co> 
+ * @brief Archivo principal del programa para monitoreo de sensores y control de LEDs.
+ */
+
+#include <xc.h> // Incluir archivo de definición del microcontrolador
+#include <pic16f887.h> // Incluir definiciones específicas del PIC16F887
+#include "configd.h" // Incluir configuraciones del proyecto
+#include <math.h> // Incluir funciones matemáticas
+#include "LCD.h" // Incluir funciones para el control del LCD
+#include <stdio.h> // Incluir definiciones para operaciones de entrada y salida estándar
+
+#define BUFFER_SIZE 7 // Definir tamaño del buffer para almacenar cadenas de caracteres
+
+// Prototipos de funciones
+void leer_temperatura(void);
+void leer_luz(void);
+void leer_micro(void);
+void leer_potenciometro(void);
+void mostrar_valores_en_LCD(void);
+void comparar_temperatura(void);
+
+// Constantes y definiciones de pines
+#define LIGHT_MIN 0 // Valor mínimo de luz
+#define LIGHT_MAX 1023 // Valor máximo de luz
+#define LED_ROJO PORTEbits.RE0 // Definición del pin del LED rojo
+#define LED_VERDE PORTEbits.RE2 // Definición del pin del LED verde
+#define LED_AZUL PORTBbits.RB2 // Definición del pin del LED azul
+
+// Variables globales
+char temperatura_buffer[BUFFER_SIZE]; // Buffer para almacenar la temperatura como cadena de caracteres
+char luz_buffer[BUFFER_SIZE]; // Buffer para almacenar la luz como cadena de caracteres
+char potenciometro_buffer[BUFFER_SIZE]; // Buffer para almacenar el valor del potenciómetro como cadena de caracteres
+char microfono_buffer[BUFFER_SIZE]; // Buffer para almacenar el valor del micrófono como cadena de caracteres
+unsigned int luz; // Variable para almacenar el valor de luz
+unsigned int potenciometro; // Variable para almacenar el valor del potenciómetro
+unsigned int microfono; // Variable para almacenar el valor del micrófono
+float temperatura; // Variable para almacenar el valor de temperatura
+
+/**
+ * @brief Función principal.
+ */
+void main(void) {
+    // Configurar pines de entrada y salida
+    OSCCON = 0x71; // Configurar el oscilador
+    TRISA0 = 1; // Configurar RA0 como entrada
+    TRISE1 = 1;
+    TRISE0 = 0;
+    TRISE2 = 0;
+    TRISB2 = 0;
+    TRISB1 = 1;
+    TRISB0 = 1;
+    ANSEL = 0x41; // Configurar los pines como Entrada Analógica
+    ANSEL = 0x14;
+
+    // Configurar módulo ADC
+    ADCON1bits.ADFM = 0; // Justificación Izquierda (modo-8bits)
+    ADCON1bits.VCFG0 = 0; // Seleccionar voltajes de referencia (5V-0V)
+    ADCON1bits.VCFG1 = 0; // Seleccionar voltajes de referencia (5V-0V)
+    ADCON0bits.ADCS = 0b01; // Tiempo de conversión Fosc/8
+
+    // Inicializar LEDs y LCD
+    LED_ROJO = 1;
+    LED_VERDE = 1;
+    LED_AZUL = 1;
+    LCD_Init(); // Inicializar LCD
+    LCD_String_xy(0,0,"Bienvenido");
+    __delay_ms(2000);
+    LED_ROJO = 0;
+    LED_VERDE = 0;
+    LED_AZUL = 0;
+
+    // Bucle principal
+    while (1) {
+        leer_temperatura();
+        leer_luz();
+        leer_micro();
+        leer_potenciometro();
+        mostrar_valores_en_LCD();
+        comparar_temperatura();
+        __delay_ms(1000);
+    }
+}
+
+/**
+ * @brief Leer el valor de temperatura del sensor.
+ */
+void leer_temperatura(void) {
+    ADCON0bits.CHS = 0b0000; // Seleccionar el Canal Analógico AN0
+    ADCON0bits.ADON = 1; // Habilitar el Módulo AD
+    __delay_us(30);
+    ADCON0bits.GO = 1;
+    while (ADCON0bits.GO);
+    int valor_temperatura = 1023 - (ADRESH * 4);
+    ADCON0bits.ADON = 0;
+    temperatura = (float)(valor_temperatura * 0.04058);
+}
+
+/**
+ * @brief Leer el valor de luz del sensor.
+ */
+void leer_luz(void) {
+    ADCON0bits.CHS = 0b0110;
+    ADCON0bits.ADON = 1;
+    __delay_us(30);
+    ADCON0bits.GO = 1;
+    while (ADCON0bits.GO);
+    luz = ADRESH * 4;
+    ADCON0bits.ADON = 0;
+}
+
+/**
+ * @brief Leer el valor del micrófono del sensor.
+ */
+void leer_micro(void) {
+    ADCON0bits.CHS = 0b1010;
+    ADCON0bits.ADON = 1;
+    __delay_us(30);
+    ADCON0bits.GO = 1;
+    while (ADCON0bits.GO);
+    microfono = ADRESH * 4;
+    ADCON0bits.ADON = 0;
+}
+
+/**
+ * @brief Leer el valor del potenciómetro del sensor.
+ */
+void leer_potenciometro(void) {
+    ADCON0bits.CHS = 0b1100;
+    ADCON0bits.ADON = 1;
+    __delay_us(30);
+    ADCON0bits.GO = 1;
+    while (ADCON0bits.GO);
+    potenciometro = ADRESH;
+    ADCON0bits.ADON = 0;
+}
+
+/**
+ * @brief Mostrar los valores de los sensores en el LCD.
+ */
+void mostrar_valores_en_LCD(void) {
+    LCD_Clear();
+    snprintf(temperatura_buffer, BUFFER_SIZE, "%.2f", temperatura);
+    snprintf(luz_buffer, BUFFER_SIZE, "%d", luz);
+    snprintf(potenciometro_buffer, BUFFER_SIZE, "%d", potenciometro);
+    snprintf(microfono_buffer, BUFFER_SIZE, "%d", microfono);
+    LCD_String_xy(0, 0, "t:");
+    LCD_String_xy(0, 2, temperatura_buffer);
+    LCD_String_xy(0, 9, "l:");
+    LCD_String_xy(0, 11, luz_buffer);
+    LCD_String_xy(2, 0, "p:");
+    LCD_String_xy(2, 2, potenciometro_buffer);
+    LCD_String_xy(2, 9, "m:");
+    LCD_String_xy(2, 11, microfono_buffer);
+}
+
+/**
+ * @brief Comparar el valor de temperatura y controlar los LEDs en consecuencia.
+ */
+void comparar_temperatura(void) {
+    if (temperatura > 23) {
+        LED_ROJO = 1;
+        LED_AZUL = 0;
+        LED_VERDE = 0;
+    } else if (temperatura < 20 && luz > 200) {
+        LED_ROJO = 0;
+        LED_AZUL = 1;
+        LED_VERDE = 0;
+    } else {
+        LED_ROJO = 0;
+        LED_AZUL = 0;
+        LED_VERDE = 1;
+    }
+}
